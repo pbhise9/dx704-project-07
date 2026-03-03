@@ -1,0 +1,80 @@
+Used chatGpt to to understand the problem statement and execution steps 
+
+ 
+1) Problem setup you should state clearly
+
+State vector (typical): position, velocity, attitude (roll/pitch/yaw), and body rates.
+
+Inputs: total thrust + 3 body torques (or 4 motor thrusts mapped through a mixer).
+
+Goal: regulate around hover (or another trim) using an LQR designed from a linearized model.
+
+A lot of “controller issues” are really “linearization/units/frames/actuator” issues.
+
+2) The most common failure modes to investigate
+A. Wrong equilibrium / linearization point
+
+Symptoms: controller “works” only near some weird attitude, or it drifts/accelerates even when error is near zero.
+Checks:
+
+Verify the hover trim: for hover in world frame, you need total thrust ≈ m·g (in the correct direction).
+
+If linearized about small angles, confirm you’re not operating at large roll/pitch.
+
+B. Frame / sign / axis mixups (the #1 culprit)
+
+Symptoms: it “corrects” in the wrong direction, yaw couples into roll, etc.
+Checks:
+
+Confirm conventions: ENU vs NED, body axes, right-hand rule for angular rates.
+
+Confirm what your state uses (Euler angles vs quaternion vs rotation matrix) and how errors are computed.
+
+C. Attitude representation issues (Euler singularities)
+
+Symptoms: controller blows up near ±90° pitch or behaves discontinuously.
+Checks:
+
+If using Euler angles, test near larger angles and see if behavior changes suddenly.
+
+If using quaternions, check sign ambiguity (q and -q same attitude) and how you compute error.
+
+D. LQR weighting and scaling problems (Q/R mismatch)
+
+Symptoms: oscillations, actuator saturation, sluggish response, crazy motor commands.
+Checks:
+
+Units matter: position in meters vs angles in radians vs rates in rad/s. If Q is not scaled, one part dominates.
+
+Start with diagonal Q/R, then adjust:
+
+Too aggressive: increase R (or reduce angle/rate weights).
+
+Too sluggish: increase Q on the most important states (usually attitude/rates).
+
+E. Discrete-time vs continuous-time mismatch
+
+Symptoms: stable in simulation at small dt, unstable when dt increases or on real hardware.
+Checks:
+
+If you implement digitally (you do), prefer designing discrete LQR (A_d, B_d) for your sample time.
+
+Verify actual control loop dt and jitter.
+
+F. Actuator limits and mixer issues
+
+Symptoms: motors saturate, flip-outs on takeoff, integrator windup (even though LQR has no integrator), “one motor pins at max”.
+Checks:
+
+Ensure motor commands are clipped after mixing, and consider anti-windup if you added integral terms externally.
+
+Verify motor mapping and torque directions (CW/CCW).
+
+G. Missing dynamics in the linear model
+
+Symptoms: looks great in ideal sim, bad with drag, motor lag, battery sag.
+Checks:
+
+Add motor first-order lag, thrust nonlinearity, and simple drag; see what breaks first.
+
+If needed, gain schedule LQR at multiple operating points (hover vs forward flight).
